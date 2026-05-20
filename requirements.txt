@@ -1,0 +1,9 @@
+python-telegram-bot
+ccxt
+pandas
+numpy
+ta
+python-dotenv
+scikit-learn
+xgboost
+schedule
