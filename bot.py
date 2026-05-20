@@ -1,4 +1,22 @@
 import os
+import threading
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web_server():
+    # Render provides a PORT environment variable automatically
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    # 1. Start the dummy web server in a separate thread so Render is happy
+    threading.Thread(target=run_web_server, daemon=True).start()
+    
 import ccxt
 import pandas as pd
 import schedule
