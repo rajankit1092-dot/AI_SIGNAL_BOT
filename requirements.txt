@@ -1,9 +1,9 @@
-python-telegram-bot==20.7
-ccxt==4.2.25
+python-telegram-bot==21.4
+ccxt==4.3.98
 pandas==2.2.2
 numpy==1.26.4
 ta==0.11.0
 python-dotenv==1.0.1
-scikit-learn==1.5.0
-xgboost==2.0.3
-schedule==1.2.1
+scikit-learn==1.5.1
+xgboost==2.1.1
+schedule==1.2.2
