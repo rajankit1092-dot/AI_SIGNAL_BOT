@@ -1,14 +1,9 @@
-python-telegram-bot
-ccxt
-pandas
-numpy
-ta
-python-dotenv
-scikit-learn
-xgboost
-<<<<<<< HEAD
-schedule
-flask
-=======
-schedule
->>>>>>> 045ffdb159117cbcf06b28567973c98dff05c2d8
+python-telegram-bot==20.7
+ccxt==4.2.25
+pandas==2.2.2
+numpy==1.26.4
+ta==0.11.0
+python-dotenv==1.0.1
+scikit-learn==1.5.0
+xgboost==2.0.3
+schedule==1.2.1
