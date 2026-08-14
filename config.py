@@ -55,9 +55,9 @@ TIMEFRAMES = {
 
 MIN_CONFIDENCE = 80
 
-MIN_ADX = 25
+MIN_ADX = 30
 
-MIN_VOLUME_RATIO = 1.2
+MIN_VOLUME_RATIO = 1.5
 
 ENABLE_MULTI_TIMEFRAME = True
 
@@ -69,13 +69,19 @@ ENABLE_BB_SQUEEZE = True
 
 ENABLE_TREND_FILTER = True
 
+# Require price to still be near the fast EMA (not extended) so entries
+# are pullbacks into an established trend rather than late breakout chases.
+REQUIRE_PULLBACK = True
+
+PULLBACK_ATR_MULT = 1.0
+
 # =========================
 # RISK MANAGEMENT
 # =========================
 
 RISK_REWARD_RATIO = 2
 
-ATR_MULTIPLIER = 1.5
+ATR_MULTIPLIER = 2.0
 
 MAX_DAILY_TRADES = 10
 

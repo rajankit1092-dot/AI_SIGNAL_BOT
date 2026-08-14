@@ -131,17 +131,30 @@ def analyze_symbol(symbol):
 
     try:
 
-        # Fetch market data
+        # Fetch market data (entry timeframe + higher timeframes for
+        # multi-timeframe trend confirmation)
         df = fetch_data(
             symbol,
             TIMEFRAMES["entry"]
         )
 
+        df_1h = fetch_data(
+            symbol,
+            TIMEFRAMES["confirmation"]
+        )
+
+        df_4h = fetch_data(
+            symbol,
+            TIMEFRAMES["trend"]
+        )
+
         # Add indicators
         df = add_indicators(df)
+        df_1h = add_indicators(df_1h)
+        df_4h = add_indicators(df_4h)
 
         # Generate signal
-        signal = generate_signal(df)
+        signal = generate_signal(df, df_1h, df_4h)
 
         if signal is None:
             return
