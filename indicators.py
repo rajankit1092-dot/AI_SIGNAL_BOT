@@ -155,3 +155,5 @@ def add_indicators(df):
     df.loc[df["momentum"] < 0, "sell_score"] += 10
     df.loc[df["stoch_rsi"] < 0.2, "sell_score"] += 10
     df.loc[df["strong_bearish_trend"], "sell_score"] += 10
+
+    return df
