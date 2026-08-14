@@ -91,6 +91,7 @@ def default_params():
         require_pullback=False,
         pullback_atr_mult=1.0,
         min_bb_width_pct=None,  # e.g. 0.0 -> require bb_width above its own rolling mean (no squeeze)
+        breakeven_at_r=None,  # e.g. 1.0 -> move SL to entry once price is +1R in favor
     )
 
 
@@ -182,17 +183,20 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
         outcome = None
         exit_r = None
         exit_idx = None
+        cur_sl = sl
+        breakeven_moved = False
+        breakeven_r = params.get("breakeven_at_r")
 
         for j in range(entry_idx, min(entry_idx + MAX_HOLD_BARS, len(df))):
             bar = df.iloc[j]
-            hit_sl = bar["low"] <= sl if signal == "BUY" else bar["high"] >= sl
+            hit_sl = bar["low"] <= cur_sl if signal == "BUY" else bar["high"] >= cur_sl
             hit_tp1 = bar["high"] >= tp1 if signal == "BUY" else bar["low"] <= tp1
             hit_tp2 = bar["high"] >= tp2 if signal == "BUY" else bar["low"] <= tp2
             hit_tp3 = bar["high"] >= tp3 if signal == "BUY" else bar["low"] <= tp3
 
             if hit_sl:
                 outcome = "LOSS"
-                exit_r = -1.0
+                exit_r = 0.0 if breakeven_moved else -1.0
                 exit_idx = j
                 break
             if hit_tp1:
@@ -205,6 +209,18 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
                 outcome = "WIN"
                 exit_idx = j
                 break
+
+            # Move stop to breakeven once price has moved breakeven_r in our
+            # favor - takes effect from the NEXT bar onward (not retroactive
+            # within the bar that triggered it, to avoid lookahead bias).
+            if breakeven_r is not None and not breakeven_moved:
+                favorable_r = (
+                    (bar["high"] - entry) / risk if signal == "BUY"
+                    else (entry - bar["low"]) / risk
+                )
+                if favorable_r >= breakeven_r:
+                    cur_sl = entry
+                    breakeven_moved = True
 
         if outcome is None:
             j = min(entry_idx + MAX_HOLD_BARS, len(df)) - 1

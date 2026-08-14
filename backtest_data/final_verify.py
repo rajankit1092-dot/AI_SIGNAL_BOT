@@ -14,7 +14,8 @@ warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from strategy import generate_signal  # noqa: E402
-from backtest import SYMBOLS, build_dataset, stats_for_trades, MAX_HOLD_BARS  # noqa: E402
+from config import CRYPTO_SYMBOLS  # noqa: E402
+from backtest import build_dataset, stats_for_trades, MAX_HOLD_BARS  # noqa: E402
 
 
 def simulate_with_production_strategy(df, start_idx=200, end_idx=None):
@@ -97,7 +98,7 @@ if __name__ == "__main__":
 
     all_trades = []
     per_symbol = {}
-    for symbol in SYMBOLS:
+    for symbol in CRYPTO_SYMBOLS:
         df = bt.build_dataset(symbol)
         trades = simulate_with_production_strategy(df)
         per_symbol[symbol] = stats_for_trades(trades)

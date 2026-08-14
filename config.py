@@ -2,11 +2,15 @@
 # SYMBOLS
 # =========================
 
+# BNB/USDT was dropped: backtesting showed it's a consistent net loser under
+# this trend/pullback strategy on both BUY (40% win, +0.00R avg) and
+# especially SELL signals (8.3% win, -0.79R avg) - unlike BTC/ETH/SOL, its
+# price action over the backtest window was closer to range-bound/
+# event-driven than trending, which this strategy isn't built to trade.
 CRYPTO_SYMBOLS = [
 
     "BTC/USDT",
     "ETH/USDT",
-    "BNB/USDT",
     "SOL/USDT"
 
 ]
