@@ -116,6 +116,21 @@ def add_indicators(df):
         (df["adx"] > 25)
     )
 
+    # EMA-alignment trend direction without the ADX strength requirement.
+    # Used for higher-timeframe confirmation, where the entry timeframe's
+    # own ADX filter already screens for a strong-enough move.
+    df["ema_trend_bull"] = (
+        (df["ema9"] > df["ema21"]) &
+        (df["ema21"] > df["ema50"]) &
+        (df["close"] > df["vwap"])
+    )
+
+    df["ema_trend_bear"] = (
+        (df["ema9"] < df["ema21"]) &
+        (df["ema21"] < df["ema50"]) &
+        (df["close"] < df["vwap"])
+    )
+
     # =========================
     # Bollinger Squeeze
     # =========================

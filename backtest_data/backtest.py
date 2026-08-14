@@ -38,13 +38,12 @@ def load_symbol_data(symbol):
 
 
 def add_htf_trend(df_htf, prefix):
+    # Reuses the exact same ema_trend_bull/ema_trend_bear columns that
+    # production indicators.py computes, so the backtest validates the
+    # identical logic that ships (not a lookalike reimplementation).
     df = add_indicators(df_htf.copy())
-    df[f"{prefix}_bull"] = (
-        (df["ema9"] > df["ema21"]) & (df["ema21"] > df["ema50"]) & (df["close"] > df["vwap"])
-    )
-    df[f"{prefix}_bear"] = (
-        (df["ema9"] < df["ema21"]) & (df["ema21"] < df["ema50"]) & (df["close"] < df["vwap"])
-    )
+    df[f"{prefix}_bull"] = df["ema_trend_bull"]
+    df[f"{prefix}_bear"] = df["ema_trend_bear"]
     return df[["timestamp", f"{prefix}_bull", f"{prefix}_bear"]]
 
 
