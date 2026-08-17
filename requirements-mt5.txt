@@ -1,0 +1,5 @@
+# Extra dependencies for mt5_bot.py - install these in addition to
+# requirements.txt. MetaTrader5 is Windows-only (or Wine on Linux); this
+# file is separate from requirements.txt so the crypto bot (which runs
+# fine on Linux/Render) doesn't try to install it.
+MetaTrader5==5.0.45
