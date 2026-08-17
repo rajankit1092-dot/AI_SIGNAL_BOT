@@ -44,22 +44,26 @@ def add_htf_trend(df_htf, prefix):
     df = add_indicators(df_htf.copy())
     df[f"{prefix}_bull"] = df["ema_trend_bull"]
     df[f"{prefix}_bear"] = df["ema_trend_bear"]
-    return df[["timestamp", f"{prefix}_bull", f"{prefix}_bear"]]
+    df[f"{prefix}_bull_no_vwap"] = df["ema_trend_bull_no_vwap"]
+    df[f"{prefix}_bear_no_vwap"] = df["ema_trend_bear_no_vwap"]
+    return df[["timestamp", f"{prefix}_bull", f"{prefix}_bear",
+               f"{prefix}_bull_no_vwap", f"{prefix}_bear_no_vwap"]]
 
 
 def merge_htf(df15, df_htf_trend, prefix, tf_duration):
+    cols = [f"{prefix}_bull", f"{prefix}_bear", f"{prefix}_bull_no_vwap", f"{prefix}_bear_no_vwap"]
     htf = df_htf_trend.copy()
     htf["available_at"] = htf["timestamp"] + tf_duration
     htf = htf.sort_values("available_at")
     merged = pd.merge_asof(
         df15.sort_values("timestamp"),
-        htf[["available_at", f"{prefix}_bull", f"{prefix}_bear"]],
+        htf[["available_at"] + cols],
         left_on="timestamp",
         right_on="available_at",
         direction="backward",
     )
-    merged[f"{prefix}_bull"] = merged[f"{prefix}_bull"].fillna(False).astype(bool)
-    merged[f"{prefix}_bear"] = merged[f"{prefix}_bear"].fillna(False).astype(bool)
+    for c in cols:
+        merged[c] = merged[c].fillna(False).astype(bool)
     return merged.drop(columns=["available_at"])
 
 
@@ -92,33 +96,45 @@ def default_params():
         pullback_atr_mult=1.0,
         min_bb_width_pct=None,  # e.g. 0.0 -> require bb_width above its own rolling mean (no squeeze)
         breakeven_at_r=None,  # e.g. 1.0 -> move SL to entry once price is +1R in favor
+        use_vwap=True,  # False when volume data is unusable (e.g. Yahoo spot forex feed)
     )
 
 
 def signal_at_row(row, params):
+    use_vwap = params.get("use_vwap", True)
+    trend_bull = "strong_bullish_trend" if use_vwap else "strong_bullish_trend_no_vwap"
+    trend_bear = "strong_bearish_trend" if use_vwap else "strong_bearish_trend_no_vwap"
+    buy_score_col = "buy_score" if use_vwap else "buy_score_no_vwap"
+    sell_score_col = "sell_score" if use_vwap else "sell_score_no_vwap"
+
     buy = (
-        row["buy_score"] >= params["min_confidence"]
-        and row["strong_bullish_trend"]
+        row[buy_score_col] >= params["min_confidence"]
+        and row[trend_bull]
         and row["rsi"] > params["rsi_buy"]
         and row["macd"] > row["macd_signal"]
-        and row["close"] > row["vwap"]
+        and (not use_vwap or row["close"] > row["vwap"])
         and row["adx"] > params["adx_min"]
-        and row["volume_ratio"] > params["volume_ratio_min"]
+        and (params["volume_ratio_min"] is None or row["volume_ratio"] > params["volume_ratio_min"])
     )
     sell = (
-        row["sell_score"] >= params["min_confidence"]
-        and row["strong_bearish_trend"]
+        row[sell_score_col] >= params["min_confidence"]
+        and row[trend_bear]
         and row["rsi"] < params["rsi_sell"]
         and row["macd"] < row["macd_signal"]
-        and row["close"] < row["vwap"]
+        and (not use_vwap or row["close"] < row["vwap"])
         and row["adx"] > params["adx_min"]
-        and row["volume_ratio"] > params["volume_ratio_min"]
+        and (params["volume_ratio_min"] is None or row["volume_ratio"] > params["volume_ratio_min"])
     )
 
+    bull_col = "h1_bull" if use_vwap else "h1_bull_no_vwap"
+    bear_col = "h1_bear" if use_vwap else "h1_bear_no_vwap"
+    bull_col4 = "h4_bull" if use_vwap else "h4_bull_no_vwap"
+    bear_col4 = "h4_bear" if use_vwap else "h4_bear_no_vwap"
+
     if buy and params["use_mtf"]:
-        buy = row["h1_bull"] and row["h4_bull"]
+        buy = row[bull_col] and row[bull_col4]
     if sell and params["use_mtf"]:
-        sell = row["h1_bear"] and row["h4_bear"]
+        sell = row[bear_col] and row[bear_col4]
 
     if buy and params["require_pullback"]:
         buy = row["close"] <= row["ema9"] + params["pullback_atr_mult"] * row["atr"]
@@ -131,17 +147,27 @@ def signal_at_row(row, params):
         sell = not row["squeeze"]
 
     if buy:
-        return "BUY", row["buy_score"]
+        return "BUY", row[buy_score_col]
     if sell:
-        return "SELL", row["sell_score"]
+        return "SELL", row[sell_score_col]
     return None, 0
 
 
-def simulate_trades(df, params, start_idx=0, end_idx=None):
+def simulate_trades(df, params, start_idx=0, end_idx=None, spread=0.0):
+    """
+    spread: full round-trip bid/ask spread in price units (0 = crypto-style,
+    no spread modeling). All OHLC in `df` is treated as the mid price - a
+    BUY opens at mid+spread/2 (paying the ask) and closes at mid-spread/2
+    (hitting the bid), and vice-versa for SELL. This makes stops trigger on
+    a slightly smaller mid-price move than the nominal SL distance and
+    targets require a slightly larger mid-price move than nominal - the
+    real economic drag of spread, not just a flat fee bolted on after.
+    """
     end_idx = len(df) if end_idx is None else end_idx
     trades = []
     i = start_idx
     warmup = 200  # ema200 warmup
+    half_spread = spread / 2
 
     while i < end_idx - 1:
         if i < warmup:
@@ -149,7 +175,10 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
             continue
 
         row = df.iloc[i]
-        if row[["ema200", "atr", "adx", "vwap"]].isna().any():
+        required_cols = ["ema200", "atr", "adx"]
+        if params.get("use_vwap", True):
+            required_cols.append("vwap")
+        if row[required_cols].isna().any():
             i += 1
             continue
 
@@ -160,16 +189,18 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
             continue
 
         entry_idx = i + 1
-        entry = df.iloc[entry_idx]["open"]
+        entry_mid = df.iloc[entry_idx]["open"]
         atr = row["atr"]
 
         if signal == "BUY":
+            entry = entry_mid + half_spread
             sl = entry - atr * params["atr_mult_sl"]
             risk = entry - sl
             tp1 = entry + risk * params["tp1_r"]
             tp2 = entry + risk * params["tp2_r"]
             tp3 = entry + risk * params["tp3_r"]
         else:
+            entry = entry_mid - half_spread
             sl = entry + atr * params["atr_mult_sl"]
             risk = sl - entry
             tp1 = entry - risk * params["tp1_r"]
@@ -189,10 +220,19 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
 
         for j in range(entry_idx, min(entry_idx + MAX_HOLD_BARS, len(df))):
             bar = df.iloc[j]
-            hit_sl = bar["low"] <= cur_sl if signal == "BUY" else bar["high"] >= cur_sl
-            hit_tp1 = bar["high"] >= tp1 if signal == "BUY" else bar["low"] <= tp1
-            hit_tp2 = bar["high"] >= tp2 if signal == "BUY" else bar["low"] <= tp2
-            hit_tp3 = bar["high"] >= tp3 if signal == "BUY" else bar["low"] <= tp3
+            # Exiting a BUY sells at bid (mid-half_spread); exiting a SELL
+            # buys at ask (mid+half_spread) - so mid needs to move further
+            # to reach a given SL/TP level than the nominal distance implies.
+            if signal == "BUY":
+                hit_sl = bar["low"] <= cur_sl + half_spread
+                hit_tp1 = bar["high"] >= tp1 + half_spread
+                hit_tp2 = bar["high"] >= tp2 + half_spread
+                hit_tp3 = bar["high"] >= tp3 + half_spread
+            else:
+                hit_sl = bar["high"] >= cur_sl - half_spread
+                hit_tp1 = bar["low"] <= tp1 - half_spread
+                hit_tp2 = bar["low"] <= tp2 - half_spread
+                hit_tp3 = bar["low"] <= tp3 - half_spread
 
             if hit_sl:
                 outcome = "LOSS"
@@ -215,8 +255,8 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
             # within the bar that triggered it, to avoid lookahead bias).
             if breakeven_r is not None and not breakeven_moved:
                 favorable_r = (
-                    (bar["high"] - entry) / risk if signal == "BUY"
-                    else (entry - bar["low"]) / risk
+                    (bar["high"] - half_spread - entry) / risk if signal == "BUY"
+                    else (entry - (bar["low"] + half_spread)) / risk
                 )
                 if favorable_r >= breakeven_r:
                     cur_sl = entry
@@ -224,8 +264,9 @@ def simulate_trades(df, params, start_idx=0, end_idx=None):
 
         if outcome is None:
             j = min(entry_idx + MAX_HOLD_BARS, len(df)) - 1
-            last_close = df.iloc[j]["close"]
-            r = (last_close - entry) / risk if signal == "BUY" else (entry - last_close) / risk
+            last_close_mid = df.iloc[j]["close"]
+            exit_fill = last_close_mid - half_spread if signal == "BUY" else last_close_mid + half_spread
+            r = (exit_fill - entry) / risk if signal == "BUY" else (entry - exit_fill) / risk
             outcome = "WIN" if r > 0 else "LOSS"
             exit_r = r
             exit_idx = j
