@@ -204,7 +204,7 @@ def add_indicators(df):
     # reweighted to 12.5 pts each so the 0-100 scale and MIN_CONFIDENCE
     # threshold stay comparable to the full 10-component score.
     # =========================
-    df["buy_score_no_vwap"] = 0
+    df["buy_score_no_vwap"] = 0.0
 
     df.loc[df["ema9"] > df["ema21"], "buy_score_no_vwap"] += 12.5
     df.loc[df["ema21"] > df["ema50"], "buy_score_no_vwap"] += 12.5
@@ -215,7 +215,7 @@ def add_indicators(df):
     df.loc[df["stoch_rsi"] > 0.8, "buy_score_no_vwap"] += 12.5
     df.loc[df["strong_bullish_trend_no_vwap"], "buy_score_no_vwap"] += 12.5
 
-    df["sell_score_no_vwap"] = 0
+    df["sell_score_no_vwap"] = 0.0
 
     df.loc[df["ema9"] < df["ema21"], "sell_score_no_vwap"] += 12.5
     df.loc[df["ema21"] < df["ema50"], "sell_score_no_vwap"] += 12.5
