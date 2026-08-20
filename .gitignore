@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+backtest_data/*.csv
+.env
+mt5.env
+mt5_bot_state.json
+paper_test_journal.json

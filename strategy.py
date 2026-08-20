@@ -1,63 +1,119 @@
-def generate_signal(df):
+import config as default_config
+
+
+def _htf_confirms(df_htf, direction, use_vwap):
+    """Does the higher-timeframe trend (already-closed bar) agree with direction?"""
+    if df_htf is None or len(df_htf) == 0:
+        return False
+
+    latest = df_htf.iloc[-1]
+    col = "ema_trend_bull" if use_vwap else "ema_trend_bull_no_vwap"
+    if direction == "SELL":
+        col = "ema_trend_bear" if use_vwap else "ema_trend_bear_no_vwap"
+
+    return bool(latest[col])
+
+
+def generate_signal(df, df_1h=None, df_4h=None, cfg=default_config):
 
     latest = df.iloc[-1]
 
     signal = None
     confidence = 0
 
+    use_vwap = getattr(cfg, "ENABLE_VWAP_FILTER", True)
+    use_volume = getattr(cfg, "ENABLE_VOLUME_FILTER", True)
+    rsi_buy = getattr(cfg, "RSI_BUY_THRESHOLD", 55)
+    rsi_sell = getattr(cfg, "RSI_SELL_THRESHOLD", 45)
+
+    trend_col_bull = "strong_bullish_trend" if use_vwap else "strong_bullish_trend_no_vwap"
+    trend_col_bear = "strong_bearish_trend" if use_vwap else "strong_bearish_trend_no_vwap"
+    buy_score_col = "buy_score" if use_vwap else "buy_score_no_vwap"
+    sell_score_col = "sell_score" if use_vwap else "sell_score_no_vwap"
+
     # =========================
     # BUY CONDITIONS
     # =========================
-    if (
+    buy = (
 
-        latest["buy_score"] >= 80 and
+        latest[buy_score_col] >= cfg.MIN_CONFIDENCE and
 
-        latest["strong_bullish_trend"] and
+        latest[trend_col_bull] and
 
-        latest["rsi"] > 55 and
+        latest["rsi"] > rsi_buy and
 
         latest["macd"] > latest["macd_signal"] and
 
-        latest["close"] > latest["vwap"] and
+        (not use_vwap or latest["close"] > latest["vwap"]) and
 
-        latest["adx"] > 25 and
+        latest["adx"] > cfg.MIN_ADX and
 
-        latest["volume_ratio"] > 1.2
+        (not use_volume or latest["volume_ratio"] > cfg.MIN_VOLUME_RATIO)
 
-    ):
-
-        signal = "BUY"
-        confidence = latest["buy_score"]
+    )
 
     # =========================
     # SELL CONDITIONS
     # =========================
-    elif (
+    sell = (
 
-        latest["sell_score"] >= 80 and
+        latest[sell_score_col] >= cfg.MIN_CONFIDENCE and
 
-        latest["strong_bearish_trend"] and
+        latest[trend_col_bear] and
 
-        latest["rsi"] < 45 and
+        latest["rsi"] < rsi_sell and
 
         latest["macd"] < latest["macd_signal"] and
 
-        latest["close"] < latest["vwap"] and
+        (not use_vwap or latest["close"] < latest["vwap"]) and
 
-        latest["adx"] > 25 and
+        latest["adx"] > cfg.MIN_ADX and
 
-        latest["volume_ratio"] > 1.2
+        (not use_volume or latest["volume_ratio"] > cfg.MIN_VOLUME_RATIO)
 
-    ):
+    )
 
+    if buy:
+        signal = "BUY"
+        confidence = latest[buy_score_col]
+    elif sell:
         signal = "SELL"
-        confidence = latest["sell_score"]
+        confidence = latest[sell_score_col]
 
     # =========================
     # NO SIGNAL
     # =========================
     if signal is None:
         return None
+
+    # =========================
+    # MULTI-TIMEFRAME CONFIRMATION
+    # =========================
+    # Requires the 1h and 4h trend to agree with the entry-timeframe signal,
+    # so trades aren't taken against the higher-timeframe trend.
+    if getattr(cfg, "ENABLE_MULTI_TIMEFRAME", True):
+
+        if not _htf_confirms(df_1h, signal, use_vwap):
+            return None
+
+        if not _htf_confirms(df_4h, signal, use_vwap):
+            return None
+
+    # =========================
+    # PULLBACK FILTER
+    # =========================
+    # Requires price to still be close to the fast EMA rather than already
+    # extended away from it, so entries are pullbacks into the trend instead
+    # of chasing a move that's already run.
+    if getattr(cfg, "REQUIRE_PULLBACK", False):
+
+        pullback_band = cfg.PULLBACK_ATR_MULT * latest["atr"]
+
+        if signal == "BUY" and latest["close"] > latest["ema9"] + pullback_band:
+            return None
+
+        if signal == "SELL" and latest["close"] < latest["ema9"] - pullback_band:
+            return None
 
     # =========================
     # ENTRY PRICE
@@ -71,7 +127,7 @@ def generate_signal(df):
 
     if signal == "BUY":
 
-        sl = entry - (atr * 1.5)
+        sl = entry - (atr * cfg.ATR_MULTIPLIER)
 
         risk = entry - sl
 
@@ -83,7 +139,7 @@ def generate_signal(df):
 
     else:
 
-        sl = entry + (atr * 1.5)
+        sl = entry + (atr * cfg.ATR_MULTIPLIER)
 
         risk = sl - entry
 
@@ -100,15 +156,15 @@ def generate_signal(df):
 
         "signal": signal,
 
-        "entry": round(entry, 2),
+        "entry": round(entry, 5),
 
-        "sl": round(sl, 2),
+        "sl": round(sl, 5),
 
-        "tp1": round(tp1, 2),
+        "tp1": round(tp1, 5),
 
-        "tp2": round(tp2, 2),
+        "tp2": round(tp2, 5),
 
-        "tp3": round(tp3, 2),
+        "tp3": round(tp3, 5),
 
         "confidence": int(confidence),
 

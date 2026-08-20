@@ -116,6 +116,47 @@ def add_indicators(df):
         (df["adx"] > 25)
     )
 
+    # Same trend definitions, without the VWAP condition. VWAP is
+    # volume-weighted and meaningless (NaN) on a feed with no real volume
+    # (e.g. Yahoo's spot-forex data) - use these instead when
+    # config.ENABLE_VWAP_FILTER is off.
+    df["strong_bullish_trend_no_vwap"] = (
+        (df["ema9"] > df["ema21"]) &
+        (df["ema21"] > df["ema50"]) &
+        (df["adx"] > 25)
+    )
+
+    df["strong_bearish_trend_no_vwap"] = (
+        (df["ema9"] < df["ema21"]) &
+        (df["ema21"] < df["ema50"]) &
+        (df["adx"] > 25)
+    )
+
+    # EMA-alignment trend direction without the ADX strength requirement.
+    # Used for higher-timeframe confirmation, where the entry timeframe's
+    # own ADX filter already screens for a strong-enough move.
+    df["ema_trend_bull"] = (
+        (df["ema9"] > df["ema21"]) &
+        (df["ema21"] > df["ema50"]) &
+        (df["close"] > df["vwap"])
+    )
+
+    df["ema_trend_bear"] = (
+        (df["ema9"] < df["ema21"]) &
+        (df["ema21"] < df["ema50"]) &
+        (df["close"] < df["vwap"])
+    )
+
+    df["ema_trend_bull_no_vwap"] = (
+        (df["ema9"] > df["ema21"]) &
+        (df["ema21"] > df["ema50"])
+    )
+
+    df["ema_trend_bear_no_vwap"] = (
+        (df["ema9"] < df["ema21"]) &
+        (df["ema21"] < df["ema50"])
+    )
+
     # =========================
     # Bollinger Squeeze
     # =========================
@@ -155,3 +196,34 @@ def add_indicators(df):
     df.loc[df["momentum"] < 0, "sell_score"] += 10
     df.loc[df["stoch_rsi"] < 0.2, "sell_score"] += 10
     df.loc[df["strong_bearish_trend"], "sell_score"] += 10
+
+    # =========================
+    # Buy/Sell Score without VWAP or volume (feeds with no real volume,
+    # e.g. spot forex, make both of those NaN/meaningless - see
+    # strong_bullish_trend_no_vwap above). Same 8 remaining checks,
+    # reweighted to 12.5 pts each so the 0-100 scale and MIN_CONFIDENCE
+    # threshold stay comparable to the full 10-component score.
+    # =========================
+    df["buy_score_no_vwap"] = 0.0
+
+    df.loc[df["ema9"] > df["ema21"], "buy_score_no_vwap"] += 12.5
+    df.loc[df["ema21"] > df["ema50"], "buy_score_no_vwap"] += 12.5
+    df.loc[df["rsi"] > 55, "buy_score_no_vwap"] += 12.5
+    df.loc[df["macd"] > df["macd_signal"], "buy_score_no_vwap"] += 12.5
+    df.loc[df["adx"] > 25, "buy_score_no_vwap"] += 12.5
+    df.loc[df["momentum"] > 0, "buy_score_no_vwap"] += 12.5
+    df.loc[df["stoch_rsi"] > 0.8, "buy_score_no_vwap"] += 12.5
+    df.loc[df["strong_bullish_trend_no_vwap"], "buy_score_no_vwap"] += 12.5
+
+    df["sell_score_no_vwap"] = 0.0
+
+    df.loc[df["ema9"] < df["ema21"], "sell_score_no_vwap"] += 12.5
+    df.loc[df["ema21"] < df["ema50"], "sell_score_no_vwap"] += 12.5
+    df.loc[df["rsi"] < 45, "sell_score_no_vwap"] += 12.5
+    df.loc[df["macd"] < df["macd_signal"], "sell_score_no_vwap"] += 12.5
+    df.loc[df["adx"] > 25, "sell_score_no_vwap"] += 12.5
+    df.loc[df["momentum"] < 0, "sell_score_no_vwap"] += 12.5
+    df.loc[df["stoch_rsi"] < 0.2, "sell_score_no_vwap"] += 12.5
+    df.loc[df["strong_bearish_trend_no_vwap"], "sell_score_no_vwap"] += 12.5
+
+    return df
