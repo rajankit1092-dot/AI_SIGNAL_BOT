@@ -245,8 +245,15 @@ def main():
     if mt5 is None:
         raise RuntimeError("MetaTrader5 package not installed / not on Windows - see mt5_setup.md")
 
-    if not mt5.initialize(login=cfg.MT5_LOGIN, password=cfg.MT5_PASSWORD,
-                           server=cfg.MT5_SERVER, path=cfg.MT5_TERMINAL_PATH):
+    # mt5.initialize() rejects an explicit path=None (it needs the kwarg
+    # omitted entirely to auto-detect the terminal) - confirmed against a
+    # real MT5 terminal, this was untested before since no Windows/MT5 was
+    # available in the environment that originally wrote this file.
+    init_kwargs = {"login": cfg.MT5_LOGIN, "password": cfg.MT5_PASSWORD, "server": cfg.MT5_SERVER}
+    if cfg.MT5_TERMINAL_PATH:
+        init_kwargs["path"] = cfg.MT5_TERMINAL_PATH
+
+    if not mt5.initialize(**init_kwargs):
         raise RuntimeError(f"MT5 initialize() failed: {mt5.last_error()}")
 
     print(f"Connected to MT5. DRY_RUN={cfg.DRY_RUN}. Symbols: {list(cfg.MT5_SYMBOLS)}")
